@@ -45,7 +45,7 @@ var (
 //                    "P": "qwertz",                                     "P": "qwertz",
 //                },                                                 },
 //            }                                                  }
-func MapToStruct(in map[string]interface{}, out interface{}) error {
+func MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
 	v := reflect.ValueOf(out)
 	if v.Kind() != reflect.Ptr {
 		return ErrorNoPtr
@@ -57,10 +57,13 @@ func MapToStruct(in map[string]interface{}, out interface{}) error {
 
 	for k, v := range in {
 		if err := SetField(out, k, v); err != nil {
-			println(err.Error())
+			fmt.Println(err)
+			if len(omitErrors) == 0 || !omitErrors[0] {
+				return fmt.Errorf("error assigning value to field '%s', %v", k, err)
+			}
 		}
 	}
-	fmt.Printf("%+v\n", out)
+
 	return nil
 }
 
@@ -78,10 +81,18 @@ func SetField(obj interface{}, name string, value interface{}) error {
 		return errors.New("pointer does not point to a struct")
 	}
 
-	structFieldValue := structValue.FieldByName(name)
+	var structFieldValue reflect.Value
+
+	if jsonName := findFieldByJsonTag(structValue.Type(), name); jsonName != "" {
+		structFieldValue = structValue.FieldByName(jsonName)
+	}
 
 	if !structFieldValue.IsValid() {
-		return fmt.Errorf("no such field: %s in obj", name)
+		structFieldValue = structValue.FieldByName(name)
+	}
+
+	if !structFieldValue.IsValid() {
+		return fmt.Errorf("no such field by name or json tag '%s' in %v", name, structValue.Type())
 	}
 
 	if !structFieldValue.CanSet() {
@@ -123,4 +134,16 @@ func ensureOrCreatePtrToStruct(v reflect.Value) (isNil bool, ret reflect.Value) 
 		v = v.Elem()
 	}
 	return isNil, reflect.New(v.Type())
+}
+
+func findFieldByJsonTag(structType reflect.Type, tag string) string {
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		t := field.Tag.Get("json")
+
+		if tag == t {
+			return field.Name
+		}
+	}
+	return ""
 }
