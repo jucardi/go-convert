@@ -45,6 +45,10 @@ var (
 //                    "P": "qwertz",                                     "P": "qwertz",
 //                },                                                 },
 //            }                                                  }
+//
+// NOTE: If the struct has `json` tags defined, the converter will attempt to match by json tags before attempting to match by field name. See the use cases
+// defined in the test file.S
+//
 func MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
 	v := reflect.ValueOf(out)
 	if v.Kind() != reflect.Ptr {
