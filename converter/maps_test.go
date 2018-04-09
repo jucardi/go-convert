@@ -59,7 +59,7 @@ func TestMapToStruct_MatchingTypes(t *testing.T) {
 }
 
 type testStructC struct {
-	A string                 `json:"a"`
+	A string                 `json:"a,omitempty"`
 	B int                    `json:"b"`
 	C bool                   `json:"c"`
 	D *testStructD           `json:"d"`

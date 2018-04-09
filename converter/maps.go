@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 var (
@@ -128,8 +129,6 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 func ensureOrCreatePtrToStruct(v reflect.Value) (isNil bool, ret reflect.Value) {
 	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
-		fmt.Println(v.Kind(), v.Type(), v.IsNil(), v.Type().Elem())
-
 		if v.IsNil() {
 			v = reflect.New(v.Type().Elem())
 			isNil = true
@@ -145,7 +144,10 @@ func findFieldByJsonTag(structType reflect.Type, tag string) string {
 		field := structType.Field(i)
 		t := field.Tag.Get("json")
 
-		if tag == t {
+		// To make sure a match happens when using metadata in tags such as `json:"name,omitempty"`
+		split := strings.Split(t, ",")
+
+		if tag == split[0] {
 			return field.Name
 		}
 	}
