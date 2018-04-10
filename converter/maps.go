@@ -80,13 +80,7 @@ func NewMapConverter(tag string, useFieldNameOnTagMismatch bool) *MapConverter {
 // NOTE: If the struct has `json` tags defined, the converter will attempt to match by json tags before attempting to match by field name. See the use cases
 // defined in the test file.S
 //
-func (m *MapConverter) MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
-	return m.BsonToStruct(bson.M(in), out, omitErrors...)
-}
-
-// BsonToStruct:  Attempts to convert a bson.M to a provided pointer to a struct. The conversion happens recursively, meaning that if a struct reference is defined
-// in a parent struct ref, it will be automatically created and mapped as well. Works similar to MapToStruct. Read MapToStruct docs for more information.
-func (m *MapConverter) BsonToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
+func (m *MapConverter) MapToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
 	v := reflect.ValueOf(out)
 	if v.Kind() != reflect.Ptr {
 		return errors.New("output must be a pointer")
@@ -163,14 +157,18 @@ func (m *MapConverter) SetField(obj interface{}, name string, value interface{})
 			newVal = structFieldValue
 		}
 
+		var value bson.M
+
 		if val.Type() == reflect.TypeOf(bson.M{}) {
-			if err := m.BsonToStruct(val.Interface().(bson.M), newVal.Interface()); err != nil {
-				return fmt.Errorf("unable to convert bson to struct pointer for internal field %s, %v", name, err)
-			}
-		} else if newVal.Kind() == reflect.Map && newVal.Type().Elem().String() != "interface {}" {
+			value = val.Interface().(bson.M)
+		} else {
+			value = bson.M(val.Interface().(map[string]interface{}))
+		}
+
+		if newVal.Kind() == reflect.Map && newVal.Type().Elem().String() != "interface {}" {
 			newVal = reflect.MakeMap(newVal.Type())
-			mapToMap(val.Interface().(map[string]interface{}), newVal)
-		} else if err := m.MapToStruct(val.Interface().(map[string]interface{}), newVal.Interface()); err != nil {
+			mapToMap(value, newVal)
+		} else if err := m.MapToStruct(value, newVal.Interface()); err != nil {
 			return fmt.Errorf("unable to convert map to struct pointer for internal field %s, %v", name, err)
 		}
 
@@ -228,7 +226,7 @@ func BsonToMap(in bson.M) map[string]interface{} {
 
 // MapToMap: Is a map converter helper to easily convert a map[string]interface{} to a map[string]*someType, assuming the values contained by map[string]interface{} are in fact
 // the same type for the output.
-func MapToMap(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
+func MapToMap(in bson.M, out interface{}, omitErrors ...bool) error {
 	outVal := reflect.ValueOf(out)
 	return mapToMap(in, outVal, omitErrors...)
 }

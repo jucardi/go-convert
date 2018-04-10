@@ -29,7 +29,7 @@ func TestBsonToStruct_MatchingTypes(t *testing.T) {
 	expected := sampleStructWithBson()
 	out := &structWithBsonA{}
 
-	err := NewMapConverter("", false).BsonToStruct(in, out)
+	err := NewMapConverter("", false).MapToStruct(in, out)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, out)
 	assert.Equal(t, expected.D, out.D)
