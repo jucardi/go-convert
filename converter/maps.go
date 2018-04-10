@@ -3,15 +3,43 @@ package converter
 import (
 	"errors"
 	"fmt"
+	"gopkg.in/mgo.v2/bson"
 	"reflect"
 	"strings"
-	"gopkg.in/mgo.v2/bson"
 )
 
 var (
-	ErrorNoPtr = errors.New("output must be a pointer")
-	bsonType   = reflect.TypeOf(bson.M{})
+	bsonType = reflect.TypeOf(bson.M{})
+	instance *MapConverter
 )
+
+type MapConverter struct {
+	fieldTag                  string
+	useFieldNameOnTagMismatch bool
+}
+
+// Default:  returns the default instance of the MapConverter
+func Default() *MapConverter {
+	if instance == nil {
+		instance = NewMapConverter("json", false)
+	}
+	return instance
+}
+
+// SetDefault: Replaces the default instance with the given instance.
+func SetDefault(converter *MapConverter) *MapConverter {
+	instance = converter
+	return instance
+}
+
+// NewMapConverter: Creates a new instance of MapConverter that may have a different configuration than the default instance. The arg 'tag' specifies if a tag should be used to
+// match the fields. Eg. `json`, `bson`, `xml`. The default instance is configured to use `json`
+func NewMapConverter(tag string, useFieldNameOnTagMismatch bool) *MapConverter {
+	return &MapConverter{
+		fieldTag:                  tag,
+		useFieldNameOnTagMismatch: useFieldNameOnTagMismatch,
+	}
+}
 
 // MapToStruct: Attempts to convert a map[string]interface{} to a provided pointer to a struct. The conversion happens recursively, meaning that if a struct reference is defined
 // in a parent struct ref, it will be automatically created and mapped as well.
@@ -52,31 +80,16 @@ var (
 // NOTE: If the struct has `json` tags defined, the converter will attempt to match by json tags before attempting to match by field name. See the use cases
 // defined in the test file.S
 //
-func MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
-	return BsonToStruct(bson.M(in), out, omitErrors...)
-}
-
-// BsonToMap: Easily converts from the mgo bson.M type to a map[string]interface{} recursively
-func BsonToMap(in bson.M) map[string]interface{} {
-	ret := map[string]interface{}{}
-
-	for k, v := range in {
-		if reflect.TypeOf(v) == bsonType {
-			ret[k] = BsonToMap(v.(bson.M))
-		} else {
-			ret[k] = v
-		}
-	}
-
-	return ret
+func (m *MapConverter) MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
+	return m.BsonToStruct(bson.M(in), out, omitErrors...)
 }
 
 // BsonToStruct:  Attempts to convert a bson.M to a provided pointer to a struct. The conversion happens recursively, meaning that if a struct reference is defined
 // in a parent struct ref, it will be automatically created and mapped as well. Works similar to MapToStruct. Read MapToStruct docs for more information.
-func BsonToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
+func (m *MapConverter) BsonToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
 	v := reflect.ValueOf(out)
 	if v.Kind() != reflect.Ptr {
-		return ErrorNoPtr
+		return errors.New("output must be a pointer")
 	}
 
 	if v.IsNil() {
@@ -87,7 +100,7 @@ func BsonToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
 		if v == nil {
 			continue
 		}
-		if err := SetField(out, k, v); err != nil {
+		if err := m.SetField(out, k, v); err != nil {
 			fmt.Println(err)
 			if len(omitErrors) == 0 || !omitErrors[0] {
 				return fmt.Errorf("error assigning value to field '%s', %v", k, err)
@@ -99,7 +112,7 @@ func BsonToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
 }
 
 // SetField: Sets the field value of a struct pointer.
-func SetField(obj interface{}, name string, value interface{}) error {
+func (m *MapConverter) SetField(obj interface{}, name string, value interface{}) error {
 	v := reflect.ValueOf(obj)
 
 	if v.Kind() != reflect.Ptr {
@@ -114,8 +127,14 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 	var structFieldValue reflect.Value
 
-	if jsonName := findFieldByJsonTag(structValue.Type(), name); jsonName != "" {
-		structFieldValue = structValue.FieldByName(jsonName)
+	if m.fieldTag != "" {
+		if jsonName := m.findFieldByJsonTag(structValue.Type(), name); jsonName != "" {
+			structFieldValue = structValue.FieldByName(jsonName)
+		}
+
+		if !structFieldValue.IsValid() && !m.useFieldNameOnTagMismatch {
+			return fmt.Errorf("no field matches the '%s' tag with value '%s' in %v", m.fieldTag, name, structValue.Type())
+		}
 	}
 
 	if !structFieldValue.IsValid() {
@@ -123,7 +142,9 @@ func SetField(obj interface{}, name string, value interface{}) error {
 	}
 
 	if !structFieldValue.IsValid() {
-		return fmt.Errorf("no such field by name or json tag '%s' in %v", name, structValue.Type())
+		println("AAA", m.fieldTag)
+		println("BBB", name)
+		return fmt.Errorf("no field by name '%s' in %v", name, structValue.Type())
 	}
 
 	if !structFieldValue.CanSet() {
@@ -145,10 +166,10 @@ func SetField(obj interface{}, name string, value interface{}) error {
 		}
 
 		if val.Type() == reflect.TypeOf(bson.M{}) {
-			if err := BsonToStruct(val.Interface().(bson.M), newVal.Interface()); err != nil {
+			if err := m.BsonToStruct(val.Interface().(bson.M), newVal.Interface()); err != nil {
 				return fmt.Errorf("unable to convert bson to struct pointer for internal field %s, %v", name, err)
 			}
-		} else if err := MapToStruct(val.Interface().(map[string]interface{}), newVal.Interface()); err != nil {
+		} else if err := m.MapToStruct(val.Interface().(map[string]interface{}), newVal.Interface()); err != nil {
 			return fmt.Errorf("unable to convert map to struct pointer for internal field %s, %v", name, err)
 		}
 
@@ -171,17 +192,70 @@ func ensureOrCreatePtrToStruct(v reflect.Value) (isNil bool, ret reflect.Value) 
 	return isNil, reflect.New(v.Type())
 }
 
-func findFieldByJsonTag(structType reflect.Type, tag string) string {
+func (m *MapConverter) findFieldByJsonTag(structType reflect.Type, tagValue string) string {
+	if m.fieldTag == "" {
+		return ""
+	}
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
-		t := field.Tag.Get("json")
+		t := field.Tag.Get(m.fieldTag)
 
 		// To make sure a match happens when using metadata in tags such as `json:"name,omitempty"`
 		split := strings.Split(t, ",")
 
-		if tag == split[0] {
+		if tagValue == split[0] {
 			return field.Name
 		}
 	}
 	return ""
+}
+
+// MapToMap: Is a map converter helper to easily convert a map[string]interface{} to a map[string]*someType, assuming the values contained by map[string]interface{} are in fact
+// the same type for the output.
+func MapToMap(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
+	outVal := reflect.ValueOf(out)
+
+	if outVal.Kind() != reflect.Map {
+		return errors.New("'out' must be a map")
+	}
+
+	if outVal.IsNil() {
+		return errors.New("the output map must be initialized")
+	}
+
+	mapType := outVal.Type().Elem()
+
+	for k, v := range in {
+		kVal := reflect.ValueOf(k)
+		vVal := reflect.ValueOf(v)
+
+		if vVal.Type() == mapType {
+			outVal.SetMapIndex(kVal, vVal)
+			continue
+		}
+
+		err := fmt.Errorf("error assigning value to field '%s', type mismatch %v != %v, ", k, vVal.Type(), mapType)
+		fmt.Println(err)
+
+		if len(omitErrors) == 0 || !omitErrors[0] {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// BsonToMap: Easily converts from the mgo bson.M type to a map[string]interface{} recursively
+func BsonToMap(in bson.M) map[string]interface{} {
+	ret := map[string]interface{}{}
+
+	for k, v := range in {
+		if reflect.TypeOf(v) == bsonType {
+			ret[k] = BsonToMap(v.(bson.M))
+		} else {
+			ret[k] = v
+		}
+	}
+
+	return ret
 }
