@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	bsonType = reflect.TypeOf(bson.M{})
-	instance *MapConverter
+	bsonType      = reflect.TypeOf(bson.M{})
+	mapStrIntType = reflect.TypeOf(map[string]interface{}{})
+	instance      *MapConverter
 )
 
 type MapConverter struct {
@@ -146,7 +147,10 @@ func (m *MapConverter) SetField(obj interface{}, name string, value interface{})
 	structFieldType := structFieldValue.Type()
 	val := reflect.ValueOf(value)
 
-	if structFieldType != val.Type() {
+	if val.Type() == bsonType && structFieldType == mapStrIntType {
+		newVal := BsonToMap(value.(bson.M))
+		val = reflect.ValueOf(newVal)
+	} else if structFieldType != val.Type() {
 		if val.Kind() != reflect.Map && val.Type() != bsonType {
 			return fmt.Errorf("provided value type did not match obj field type and it is not a map, unable to convert. Name %v, expected %v, actual %v", name, structFieldType, val.Type())
 		}
