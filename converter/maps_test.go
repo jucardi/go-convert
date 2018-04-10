@@ -15,8 +15,8 @@ func TestDefault(t *testing.T) {
 func TestMapToStruct_MatchingTypes(t *testing.T) {
 	in := sampleMap()
 	expected := sampleStruct()
-
 	out := &testStructA{}
+
 	err := NewMapConverter("", false).MapToStruct(in, out)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, out)
@@ -27,8 +27,8 @@ func TestMapToStruct_MatchingTypes(t *testing.T) {
 func TestBsonToStruct_MatchingTypes(t *testing.T) {
 	in := sampleBson()
 	expected := sampleStructWithBson()
-
 	out := &structWithBsonA{}
+
 	err := NewMapConverter("", false).BsonToStruct(in, out)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, out)
@@ -39,8 +39,8 @@ func TestBsonToStruct_MatchingTypes(t *testing.T) {
 func TestMapToStruct_MatchingTypesJsonTags(t *testing.T) {
 	in := sampleMapMatchingJsonTags()
 	expected := sampleStruct()
-
 	out := &testStructA{}
+
 	err := Default().MapToStruct(in, out)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, out)
@@ -71,6 +71,16 @@ func TestMapToMap(t *testing.T) {
 
 	out := map[string][]string{}
 	err := MapToMap(in, out)
+	assert.Nil(t, err)
+	assert.Equal(t, expected, out)
+}
+
+func TestMapConverter_MapToStruct_NestedMapSpecifiedValueType(t *testing.T) {
+	in := sampleMapNestedDifferentMap()
+	expected := sampleStructNestedMap()
+	out := &structNestedMap{}
+
+	err := NewMapConverter("", false).MapToStruct(in, out)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, out)
 }

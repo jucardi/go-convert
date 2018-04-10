@@ -28,6 +28,12 @@ type structWithBsonB struct {
 	Y bson.M
 }
 
+type structNestedMap struct {
+	A string
+	B int
+	C map[string][]string
+}
+
 func sampleStruct() *testStructA {
 	return &testStructA{
 		A: "something",
@@ -109,6 +115,30 @@ func sampleMapMatchingJsonTags() map[string]interface{} {
 		},
 		"e": map[string]interface{}{
 			"P": "qwertz",
+		},
+	}
+}
+
+func sampleStructNestedMap() *structNestedMap {
+	return &structNestedMap{
+		A: "abcd",
+		B: 1234,
+		C: map[string][]string{
+			"a": {"a", "b", "c", "b"},
+			"b": {"1", "2", "3", "4"},
+			"c": {"x", "y", "z", "w"},
+		},
+	}
+}
+
+func sampleMapNestedDifferentMap() map[string]interface{} {
+	return map[string]interface{}{
+		"A": "abcd",
+		"B": 1234,
+		"C": map[string]interface{}{
+			"a": []string{"a", "b", "c", "b"},
+			"b": []string{"1", "2", "3", "4"},
+			"c": []string{"x", "y", "z", "w"},
 		},
 	}
 }

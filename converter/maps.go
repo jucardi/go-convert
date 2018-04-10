@@ -142,8 +142,6 @@ func (m *MapConverter) SetField(obj interface{}, name string, value interface{})
 	}
 
 	if !structFieldValue.IsValid() {
-		println("AAA", m.fieldTag)
-		println("BBB", name)
 		return fmt.Errorf("no field by name '%s' in %v", name, structValue.Type())
 	}
 
@@ -169,6 +167,9 @@ func (m *MapConverter) SetField(obj interface{}, name string, value interface{})
 			if err := m.BsonToStruct(val.Interface().(bson.M), newVal.Interface()); err != nil {
 				return fmt.Errorf("unable to convert bson to struct pointer for internal field %s, %v", name, err)
 			}
+		} else if newVal.Kind() == reflect.Map && newVal.Type().Elem().String() != "interface {}" {
+			newVal = reflect.MakeMap(newVal.Type())
+			mapToMap(val.Interface().(map[string]interface{}), newVal)
 		} else if err := m.MapToStruct(val.Interface().(map[string]interface{}), newVal.Interface()); err != nil {
 			return fmt.Errorf("unable to convert map to struct pointer for internal field %s, %v", name, err)
 		}
@@ -210,11 +211,29 @@ func (m *MapConverter) findFieldByJsonTag(structType reflect.Type, tagValue stri
 	return ""
 }
 
+// BsonToMap: Easily converts from the mgo bson.M type to a map[string]interface{} recursively
+func BsonToMap(in bson.M) map[string]interface{} {
+	ret := map[string]interface{}{}
+
+	for k, v := range in {
+		if reflect.TypeOf(v) == bsonType {
+			ret[k] = BsonToMap(v.(bson.M))
+		} else {
+			ret[k] = v
+		}
+	}
+
+	return ret
+}
+
 // MapToMap: Is a map converter helper to easily convert a map[string]interface{} to a map[string]*someType, assuming the values contained by map[string]interface{} are in fact
 // the same type for the output.
 func MapToMap(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
 	outVal := reflect.ValueOf(out)
+	return mapToMap(in, outVal, omitErrors...)
+}
 
+func mapToMap(in map[string]interface{}, outVal reflect.Value, omitErrors ...bool) error {
 	if outVal.Kind() != reflect.Map {
 		return errors.New("'out' must be a map")
 	}
@@ -243,19 +262,4 @@ func MapToMap(in map[string]interface{}, out interface{}, omitErrors ...bool) er
 	}
 
 	return nil
-}
-
-// BsonToMap: Easily converts from the mgo bson.M type to a map[string]interface{} recursively
-func BsonToMap(in bson.M) map[string]interface{} {
-	ret := map[string]interface{}{}
-
-	for k, v := range in {
-		if reflect.TypeOf(v) == bsonType {
-			ret[k] = BsonToMap(v.(bson.M))
-		} else {
-			ret[k] = v
-		}
-	}
-
-	return ret
 }
