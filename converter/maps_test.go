@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"gopkg.in/mgo.v2/bson"
 )
 
-type testStructA struct {
+type structWithMapA struct {
 	A string
 	B int
 	C bool
-	D *testStructB
+	D *structWithMapB
 	E map[string]interface{}
 }
 
-type testStructB struct {
+type structWithMapB struct {
 	X string
 	Y map[string]interface{}
 }
@@ -35,11 +36,11 @@ func TestMapToStruct_MatchingTypes(t *testing.T) {
 		},
 	}
 
-	expected := &testStructA{
+	expected := &structWithMapA{
 		A: "something",
 		B: 1234,
 		C: true,
-		D: &testStructB{
+		D: &structWithMapB{
 			X: "abcd",
 			Y: map[string]interface{}{
 				"O": "qwerty",
@@ -50,8 +51,60 @@ func TestMapToStruct_MatchingTypes(t *testing.T) {
 		},
 	}
 
-	out := &testStructA{}
+	out := &structWithMapA{}
 	err := MapToStruct(in, out)
+	assert.Nil(t, err)
+	assert.Equal(t, expected, out)
+	assert.Equal(t, expected.D, out.D)
+	fmt.Printf("%v", out)
+}
+
+type structWithBsonA struct {
+	A string
+	B int
+	C bool
+	D *structWithBsonB
+	E bson.M
+}
+
+type structWithBsonB struct {
+	X string
+	Y bson.M
+}
+
+func TestBsonToStruct_MatchingTypes(t *testing.T) {
+	in := bson.M{
+		"A": "something",
+		"B": 1234,
+		"C": true,
+		"D": bson.M{
+			"X": "abcd",
+			"Y": bson.M{
+				"O": "qwerty",
+			},
+		},
+		"E": bson.M{
+			"P": "qwertz",
+		},
+	}
+
+	expected := &structWithBsonA{
+		A: "something",
+		B: 1234,
+		C: true,
+		D: &structWithBsonB{
+			X: "abcd",
+			Y: bson.M{
+				"O": "qwerty",
+			},
+		},
+		E: bson.M{
+			"P": "qwertz",
+		},
+	}
+
+	out := &structWithBsonA{}
+	err := BsonToStruct(in, out)
 	assert.Nil(t, err)
 	assert.Equal(t, expected, out)
 	assert.Equal(t, expected.D, out.D)
@@ -108,4 +161,39 @@ func TestMapToStruct_MatchingTypesJsonTags(t *testing.T) {
 	assert.Equal(t, expected, out)
 	assert.Equal(t, expected.D, out.D)
 	fmt.Printf("%v", out)
+}
+
+func TestBsonToMap(t *testing.T) {
+	in := bson.M{
+		"A": "something",
+		"B": 1234,
+		"C": true,
+		"D": bson.M{
+			"X": "abcd",
+			"Y": bson.M{
+				"O": "qwerty",
+			},
+		},
+		"E": bson.M{
+			"P": "qwertz",
+		},
+	}
+
+	expected := map[string]interface{}{
+		"A": "something",
+		"B": 1234,
+		"C": true,
+		"D": map[string]interface{}{
+			"X": "abcd",
+			"Y": map[string]interface{}{
+				"O": "qwerty",
+			},
+		},
+		"E": map[string]interface{}{
+			"P": "qwertz",
+		},
+	}
+
+	out := BsonToMap(in)
+	assert.Equal(t, expected, out)
 }

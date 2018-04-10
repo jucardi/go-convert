@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"gopkg.in/mgo.v2/bson"
 )
 
 var (
 	ErrorNoPtr = errors.New("output must be a pointer")
+	bsonType   = reflect.TypeOf(bson.M{})
 )
 
 // MapToStruct: Attempts to convert a map[string]interface{} to a provided pointer to a struct. The conversion happens recursively, meaning that if a struct reference is defined
@@ -51,6 +53,27 @@ var (
 // defined in the test file.S
 //
 func MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool) error {
+	return BsonToStruct(bson.M(in), out, omitErrors...)
+}
+
+// BsonToMap: Easily converts from the mgo bson.M type to a map[string]interface{} recursively
+func BsonToMap(in bson.M) map[string]interface{} {
+	ret := map[string]interface{}{}
+
+	for k, v := range in {
+		if reflect.TypeOf(v) == bsonType {
+			ret[k] = BsonToMap(v.(bson.M))
+		} else {
+			ret[k] = v
+		}
+	}
+
+	return ret
+}
+
+// BsonToStruct:  Attempts to convert a bson.M to a provided pointer to a struct. The conversion happens recursively, meaning that if a struct reference is defined
+// in a parent struct ref, it will be automatically created and mapped as well. Works similar to MapToStruct. Read MapToStruct docs for more information.
+func BsonToStruct(in bson.M, out interface{}, omitErrors ...bool) error {
 	v := reflect.ValueOf(out)
 	if v.Kind() != reflect.Ptr {
 		return ErrorNoPtr
@@ -61,6 +84,9 @@ func MapToStruct(in map[string]interface{}, out interface{}, omitErrors ...bool)
 	}
 
 	for k, v := range in {
+		if v == nil {
+			continue
+		}
 		if err := SetField(out, k, v); err != nil {
 			fmt.Println(err)
 			if len(omitErrors) == 0 || !omitErrors[0] {
@@ -106,8 +132,9 @@ func SetField(obj interface{}, name string, value interface{}) error {
 
 	structFieldType := structFieldValue.Type()
 	val := reflect.ValueOf(value)
+
 	if structFieldType != val.Type() {
-		if val.Kind() != reflect.Map {
+		if val.Kind() != reflect.Map && val.Type() != bsonType {
 			return fmt.Errorf("provided value type did not match obj field type and it is not a map, unable to convert. Name %v, expected %v, actual %v", name, structFieldType, val.Type())
 		}
 
@@ -117,9 +144,14 @@ func SetField(obj interface{}, name string, value interface{}) error {
 			newVal = structFieldValue
 		}
 
-		if err := MapToStruct(val.Interface().(map[string]interface{}), newVal.Interface()); err != nil {
-			return fmt.Errorf("unable to convert mapt to struct pointer for internal field %s, %v", name, err)
+		if val.Type() == reflect.TypeOf(bson.M{}) {
+			if err := BsonToStruct(val.Interface().(bson.M), newVal.Interface()); err != nil {
+				return fmt.Errorf("unable to convert bson to struct pointer for internal field %s, %v", name, err)
+			}
+		} else if err := MapToStruct(val.Interface().(map[string]interface{}), newVal.Interface()); err != nil {
+			return fmt.Errorf("unable to convert map to struct pointer for internal field %s, %v", name, err)
 		}
+
 		val = newVal
 	}
 
